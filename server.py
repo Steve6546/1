@@ -10,6 +10,7 @@ from flask import Flask, request, jsonify
 import os
 from tools import image, video, file as file_tools, other
 import logging
+import traceback
 
 # Setup logging
 logging.basicConfig(filename='error.log', level=logging.ERROR,
@@ -26,9 +27,10 @@ app.config['UPLOAD_FOLDER'] = STATIC_FOLDER
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Log exceptions."""
-    app.logger.error(e)
-    return jsonify({"error": "An internal server error occurred."}), 500
+    """Log exceptions with traceback."""
+    app.logger.error(f"An exception occurred: {e}")
+    app.logger.error(traceback.format_exc())
+    return jsonify({"error": "An internal server error occurred. The error has been logged."}), 500
 
 @app.route('/')
 def index():
