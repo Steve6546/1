@@ -84,6 +84,12 @@ def log_tool_usage(user_id: int, tool_key: str) -> None:
     with open('user_logs.json', 'w', encoding='utf-8') as f:
         json.dump(USER_LOGS, f, indent=4)
 
+def add_message_to_delete_list(context: ContextTypes.DEFAULT_TYPE, message_id: int):
+    """Adds a message ID to the list of messages to be deleted."""
+    if 'messages_to_delete' not in context.user_data:
+        context.user_data['messages_to_delete'] = []
+    context.user_data['messages_to_delete'].append(message_id)
+
 
 # --- Keyboard Generators ---
 
@@ -180,15 +186,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(
+        message = await update.callback_query.edit_message_text(
             'أهلاً بك في بوت الأدوات! اختر فئة من القائمة:',
             reply_markup=get_category_keyboard(user_id)
         )
+        add_message_to_delete_list(context, message.message_id)
     else:
-        await update.message.reply_text(
+        message = await update.message.reply_text(
             'أهلاً بك في بوت الأدوات! اختر فئة من القائمة:',
             reply_markup=get_category_keyboard(user_id)
         )
+        add_message_to_delete_list(context, message.message_id)
+        add_message_to_delete_list(context, update.message.message_id)
     return CHOOSING_CATEGORY
 
 
@@ -202,29 +211,42 @@ async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
     data = query.data
 
+    if data == 'clear_chat':
+        if 'messages_to_delete' in context.user_data:
+            for msg_id in context.user_data['messages_to_delete']:
+                try:
+                    await context.bot.delete_message(chat_id=query.message.chat_id, message_id=msg_id)
+                except Exception as e:
+                    logger.error(f"Could not delete message {msg_id}: {e}")
+            context.user_data['messages_to_delete'] = []
+        message = await query.message.reply_text("تم مسح المحادثة.")
+        time.sleep(2)
+        await context.bot.delete_message(chat_id=query.message.chat_id, message_id=message.message_id)
+        return await start(update, context)
+
     if data == 'favorites':
-        await query.edit_message_text("أدواتك المفضلة:", reply_markup=get_favorites_keyboard(user_id))
+        message = await query.edit_message_text("أدواتك المفضلة:", reply_markup=get_favorites_keyboard(user_id))
+        add_message_to_delete_list(context, message.message_id)
         return CHOOSING_TOOL
 
     if data == 'manage_favorites':
-        await query.edit_message_text("اختر الأدوات لإضافتها أو إزالتها من المفضلة:", reply_markup=get_favorites_management_keyboard(user_id))
+        message = await query.edit_message_text("اختر الأدوات لإضافتها أو إزالتها من المفضلة:", reply_markup=get_favorites_management_keyboard(user_id))
+        add_message_to_delete_list(context, message.message_id)
         return MANAGING_FAVORITES
 
     if data == 'about':
-        await query.edit_message_text(
+        message = await query.edit_message_text(
             "هذا البوت هو مشروع مفتوح المصدر يهدف إلى توفير أدوات مفيدة لمستخدمي تيليجرام.\n\n"
             "يمكنك المساهمة في المشروع على GitHub: [رابط المشروع](https://github.com/your-username/telegram-tools-bot)",
             parse_mode='Markdown',
             reply_markup=get_category_keyboard(user_id)
         )
-        return CHOOSING_CATEGORY
-
-    if data == 'clear_chat':
-        await query.edit_message_text("هذه الميزة قيد التطوير.", reply_markup=get_category_keyboard(user_id))
+        add_message_to_delete_list(context, message.message_id)
         return CHOOSING_CATEGORY
 
     if data == 'tool_details':
-        await query.edit_message_text("اختر أداة لعرض تفاصيلها:", reply_markup=get_tool_details_keyboard())
+        message = await query.edit_message_text("اختر أداة لعرض تفاصيلها:", reply_markup=get_tool_details_keyboard())
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_TOOL_DETAILS
 
     if data == 'updates':
@@ -238,26 +260,29 @@ async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         new_tools.append(tool_info)
 
         if new_tools:
-            message = "تمت إضافة الأدوات الجديدة التالية:\n\n"
+            message_text = "✨ تمت إضافة الأدوات الجديدة التالية:\n\n"
             for tool in new_tools:
-                message += f"- {tool['name']}: {tool['desc']}\n"
+                message_text += f"🔹 **{tool['name']}**: {tool['desc']}\n"
 
             # Update last_tools.json
             with open('last_tools.json', 'w', encoding='utf-8') as f:
                 json.dump(TOOLS, f, indent=4)
+            message_text += "\n استمتع بالتحديثات الجديدة!"
         else:
-            message = "لا توجد تحديثات جديدة في الوقت الحالي."
+            message_text = "✅ أنت تستخدم أحدث إصدار. لا توجد تحديثات جديدة في الوقت الحالي."
 
-        await query.edit_message_text(message, reply_markup=get_category_keyboard(user_id))
+        message = await query.edit_message_text(message_text, reply_markup=get_category_keyboard(user_id))
+        add_message_to_delete_list(context, message.message_id)
         return CHOOSING_CATEGORY
 
     category_key = data.split("_")[1]
     context.user_data['selected_category'] = category_key
 
-    await query.edit_message_text(
+    message = await query.edit_message_text(
         text=f"اختر أداة من فئة: {TOOLS[category_key]['name']}",
         reply_markup=get_tool_keyboard(category_key)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_TOOL
 
 
@@ -274,48 +299,55 @@ async def select_tool(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     log_tool_usage(user_id, tool)
 
     if tool == 'start':
-        await query.edit_message_text(
-            'أهلاً بك في بوت الأدوات! اختر فئة من القائمة:',
-            reply_markup=get_category_keyboard(user_id)
-        )
-        return CHOOSING_CATEGORY
+        return await start(update, context)
 
     if tool == 'remove_bg':
-        await query.edit_message_text(text="أرسل لي صورة لإزالة خلفيتها.")
+        message = await query.edit_message_text(text="أرسل لي صورة لإزالة خلفيتها.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_IMAGE
     elif tool == 'download_video':
-        await query.edit_message_text(text="أرسل لي رابط الفيديو الذي تريد تحميله.")
+        message = await query.edit_message_text(text="أرسل لي رابط الفيديو الذي تريد تحميله.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_URL
     elif tool == 'to_mp3':
-        await query.edit_message_text(text="أرسل لي ملف الفيديو لتحويله إلى MP3.")
+        message = await query.edit_message_text(text="أرسل لي ملف الفيديو لتحويله إلى MP3.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_VIDEO_FILE
     elif tool == 'generate_qr':
-        await query.edit_message_text(text="أرسل لي النص أو الرابط الذي تريد تحويله إلى QR code.")
+        message = await query.edit_message_text(text="أرسل لي النص أو الرابط الذي تريد تحويله إلى QR code.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_QR_TEXT
     elif tool == 'zip_file':
-        await query.edit_message_text(text="أرسل لي الملفات التي تريد ضغطها. أرسل 'تم' عند الانتهاء.")
+        message = await query.edit_message_text(text="أرسل لي الملفات التي تريد ضغطها. أرسل 'تم' عند الانتهاء.")
+        add_message_to_delete_list(context, message.message_id)
         context.user_data['files_to_zip'] = []
         return WAITING_FOR_FILES_TO_ZIP
     elif tool == 'unzip_file':
-        await query.edit_message_text(text="أرسل لي ملف ZIP لفك ضغطه.")
+        message = await query.edit_message_text(text="أرسل لي ملف ZIP لفك ضغطه.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_ZIP_TO_UNZIP
     elif tool == 'upscale_4k':
-        await query.edit_message_text(text="أرسل لي صورة لتحسينها بدقة 4K.")
+        message = await query.edit_message_text(text="أرسل لي صورة لتحسينها بدقة 4K.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_IMAGE_UPSCALE
     elif tool == 'crop_image':
-        await query.edit_message_text(text="أرسل لي الصورة التي تريد قصها.")
+        message = await query.edit_message_text(text="أرسل لي الصورة التي تريد قصها.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_IMAGE_CROP
     else:
-        await query.edit_message_text(text=f"تم اختيار أداة: {tool}. هذه الميزة قيد التطوير.", reply_markup=get_tool_keyboard(context.user_data['selected_category']))
+        message = await query.edit_message_text(text=f"تم اختيار أداة: {tool}. هذه الميزة قيد التطوير.", reply_markup=get_tool_keyboard(context.user_data['selected_category']))
+        add_message_to_delete_list(context, message.message_id)
         return CHOOSING_TOOL
 
 async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_spam(update.effective_user.id): return WAITING_FOR_IMAGE
+    add_message_to_delete_list(context, update.message.message_id)
     photo_file = await update.message.photo[-1].get_file()
     file_name = f"{photo_file.file_id}.jpg"
     await photo_file.download_to_drive(file_name)
 
-    await update.message.reply_text("جاري معالجة الصورة...")
+    message = await update.message.reply_text("جاري معالجة الصورة...")
+    add_message_to_delete_list(context, message.message_id)
 
     try:
         with open(file_name, 'rb') as f:
@@ -326,27 +358,33 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             with open(processed_image_path, 'wb') as f:
                 f.write(response.content)
 
-            await update.message.reply_photo(photo=open(processed_image_path, 'rb'))
+            message = await update.message.reply_photo(photo=open(processed_image_path, 'rb'))
+            add_message_to_delete_list(context, message.message_id)
             os.remove(processed_image_path)
         else:
-            await update.message.reply_text("حدث خطأ أثناء معالجة الصورة.")
+            message = await update.message.reply_text("حدث خطأ أثناء معالجة الصورة.")
+            add_message_to_delete_list(context, message.message_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to server: {e}")
-        await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        add_message_to_delete_list(context, message.message_id)
     finally:
         os.remove(file_name)
 
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         'اختر أداة أخرى:',
         reply_markup=get_category_keyboard(update.effective_user.id)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_CATEGORY
 
 
 async def url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_spam(update.effective_user.id): return WAITING_FOR_URL
+    add_message_to_delete_list(context, update.message.message_id)
     video_url = update.message.text
-    await update.message.reply_text("جاري تحميل الفيديو...")
+    message = await update.message.reply_text("جاري تحميل الفيديو...")
+    add_message_to_delete_list(context, message.message_id)
 
     try:
         response = requests.post(f"http://{SERVER_HOST}:{SERVER_PORT}/download_video", json={'url': video_url})
@@ -356,27 +394,33 @@ async def url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             with open(video_path, 'wb') as f:
                 f.write(response.content)
 
-            await update.message.reply_video(video=open(video_path, 'rb'))
+            message = await update.message.reply_video(video=open(video_path, 'rb'))
+            add_message_to_delete_list(context, message.message_id)
             os.remove(video_path)
         else:
-            await update.message.reply_text(f"حدث خطأ أثناء تحميل الفيديو: {response.json().get('error')}")
+            message = await update.message.reply_text(f"حدث خطأ أثناء تحميل الفيديو: {response.json().get('error')}")
+            add_message_to_delete_list(context, message.message_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to server: {e}")
-        await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        add_message_to_delete_list(context, message.message_id)
 
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         'اختر أداة أخرى:',
         reply_markup=get_category_keyboard(update.effective_user.id)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_CATEGORY
 
 async def video_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_spam(update.effective_user.id): return WAITING_FOR_VIDEO_FILE
+    add_message_to_delete_list(context, update.message.message_id)
     video_file = await update.message.video.get_file()
     file_name = video_file.file_path.split('/')[-1]
     await video_file.download_to_drive(file_name)
 
-    await update.message.reply_text("جاري تحويل الفيديو إلى MP3...")
+    message = await update.message.reply_text("جاري تحويل الفيديو إلى MP3...")
+    add_message_to_delete_list(context, message.message_id)
 
     try:
         with open(file_name, 'rb') as f:
@@ -387,26 +431,32 @@ async def video_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             with open(mp3_path, 'wb') as f:
                 f.write(response.content)
 
-            await update.message.reply_audio(audio=open(mp3_path, 'rb'))
+            message = await update.message.reply_audio(audio=open(mp3_path, 'rb'))
+            add_message_to_delete_list(context, message.message_id)
             os.remove(mp3_path)
         else:
-            await update.message.reply_text(f"حدث خطأ أثناء تحويل الفيديو: {response.json().get('error')}")
+            message = await update.message.reply_text(f"حدث خطأ أثناء تحويل الفيديو: {response.json().get('error')}")
+            add_message_to_delete_list(context, message.message_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to server: {e}")
-        await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        add_message_to_delete_list(context, message.message_id)
     finally:
         os.remove(file_name)
 
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         'اختر أداة أخرى:',
         reply_markup=get_category_keyboard(update.effective_user.id)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_CATEGORY
 
 async def qr_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_spam(update.effective_user.id): return WAITING_FOR_QR_TEXT
+    add_message_to_delete_list(context, update.message.message_id)
     text = update.message.text
-    await update.message.reply_text("جاري إنشاء رمز QR...")
+    message = await update.message.reply_text("جاري إنشاء رمز QR...")
+    add_message_to_delete_list(context, message.message_id)
 
     try:
         response = requests.post(f"http://{SERVER_HOST}:{SERVER_PORT}/generate_qr", json={'text': text})
@@ -416,24 +466,30 @@ async def qr_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             with open(qr_path, 'wb') as f:
                 f.write(response.content)
 
-            await update.message.reply_photo(photo=open(qr_path, 'rb'))
+            message = await update.message.reply_photo(photo=open(qr_path, 'rb'))
+            add_message_to_delete_list(context, message.message_id)
             os.remove(qr_path)
         else:
-            await update.message.reply_text(f"حدث خطأ أثناء إنشاء رمز QR: {response.json().get('error')}")
+            message = await update.message.reply_text(f"حدث خطأ أثناء إنشاء رمز QR: {response.json().get('error')}")
+            add_message_to_delete_list(context, message.message_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to server: {e}")
-        await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        add_message_to_delete_list(context, message.message_id)
 
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         'اختر أداة أخرى:',
         reply_markup=get_category_keyboard(update.effective_user.id)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_CATEGORY
 
 async def zip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_spam(update.effective_user.id): return WAITING_FOR_FILES_TO_ZIP
+    add_message_to_delete_list(context, update.message.message_id)
     if update.message.text and update.message.text.lower() == 'تم':
-        await update.message.reply_text("جاري ضغط الملفات...")
+        message = await update.message.reply_text("جاري ضغط الملفات...")
+        add_message_to_delete_list(context, message.message_id)
 
         files_to_send = []
         for file_path in context.user_data['files_to_zip']:
@@ -447,23 +503,27 @@ async def zip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 with open(zip_path, 'wb') as f:
                     f.write(response.content)
 
-                await update.message.reply_document(document=open(zip_path, 'rb'))
+                message = await update.message.reply_document(document=open(zip_path, 'rb'))
+                add_message_to_delete_list(context, message.message_id)
                 os.remove(zip_path)
             else:
-                await update.message.reply_text(f"حدث خطأ أثناء ضغط الملفات: {response.json().get('error')}")
+                message = await update.message.reply_text(f"حدث خطأ أثناء ضغط الملفات: {response.json().get('error')}")
+                add_message_to_delete_list(context, message.message_id)
         except requests.exceptions.RequestException as e:
             logger.error(f"Error connecting to server: {e}")
-            await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+            message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+            add_message_to_delete_list(context, message.message_id)
         finally:
             for file_path in context.user_data['files_to_zip']:
                 os.remove(file_path)
             context.user_data['files_to_zip'] = []
 
 
-        await update.message.reply_text(
+        message = await update.message.reply_text(
             'اختر أداة أخرى:',
             reply_markup=get_category_keyboard(update.effective_user.id)
         )
+        add_message_to_delete_list(context, message.message_id)
         return CHOOSING_CATEGORY
 
     else:
@@ -471,17 +531,20 @@ async def zip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         file_name = document.file_path.split('/')[-1]
         file_path = await document.download_to_drive(file_name)
         context.user_data['files_to_zip'].append(str(file_path))
-        await update.message.reply_text("تم استلام الملف. أرسل المزيد من الملفات أو أرسل 'تم' للضغط.")
+        message = await update.message.reply_text("تم استلام الملف. أرسل المزيد من الملفات أو أرسل 'تم' للضغط.")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_FILES_TO_ZIP
 
 
 async def unzip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_spam(update.effective_user.id): return WAITING_FOR_ZIP_TO_UNZIP
+    add_message_to_delete_list(context, update.message.message_id)
     document = await update.message.document.get_file()
     file_name = document.file_path.split('/')[-1]
     file_path = await document.download_to_drive(file_name)
 
-    await update.message.reply_text("جاري فك ضغط الملف...")
+    message = await update.message.reply_text("جاري فك ضغط الملف...")
+    add_message_to_delete_list(context, message.message_id)
 
     try:
         with open(file_path, 'rb') as f:
@@ -492,29 +555,35 @@ async def unzip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             with open(unzipped_path, 'wb') as f:
                 f.write(response.content)
 
-            await update.message.reply_document(document=open(unzipped_path, 'rb'))
+            message = await update.message.reply_document(document=open(unzipped_path, 'rb'))
+            add_message_to_delete_list(context, message.message_id)
             os.remove(unzipped_path)
         else:
-            await update.message.reply_text(f"حدث خطأ أثناء فك ضغط الملف: {response.json().get('error')}")
+            message = await update.message.reply_text(f"حدث خطأ أثناء فك ضغط الملف: {response.json().get('error')}")
+            add_message_to_delete_list(context, message.message_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to server: {e}")
-        await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        add_message_to_delete_list(context, message.message_id)
     finally:
         os.remove(str(file_path))
 
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         'اختر أداة أخرى:',
         reply_markup=get_category_keyboard(update.effective_user.id)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_CATEGORY
 
 async def upscale_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_spam(update.effective_user.id): return WAITING_FOR_IMAGE_UPSCALE
+    add_message_to_delete_list(context, update.message.message_id)
     photo_file = await update.message.photo[-1].get_file()
     file_name = f"{photo_file.file_id}.jpg"
     await photo_file.download_to_drive(file_name)
 
-    await update.message.reply_text("جاري تحسين الصورة...")
+    message = await update.message.reply_text("جاري تحسين الصورة...")
+    add_message_to_delete_list(context, message.message_id)
 
     try:
         with open(file_name, 'rb') as f:
@@ -525,23 +594,28 @@ async def upscale_image_handler(update: Update, context: ContextTypes.DEFAULT_TY
             with open(processed_image_path, 'wb') as f:
                 f.write(response.content)
 
-            await update.message.reply_photo(photo=open(processed_image_path, 'rb'))
+            message = await update.message.reply_photo(photo=open(processed_image_path, 'rb'))
+            add_message_to_delete_list(context, message.message_id)
             os.remove(processed_image_path)
         else:
-            await update.message.reply_text(f"حدث خطأ أثناء تحسين الصورة: {response.json().get('error')}")
+            message = await update.message.reply_text(f"حدث خطأ أثناء تحسين الصورة: {response.json().get('error')}")
+            add_message_to_delete_list(context, message.message_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to server: {e}")
-        await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        add_message_to_delete_list(context, message.message_id)
     finally:
         os.remove(file_name)
 
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         'اختر أداة أخرى:',
         reply_markup=get_category_keyboard(update.effective_user.id)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_CATEGORY
 
 async def crop_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    add_message_to_delete_list(context, update.message.message_id)
     photo_file = await update.message.photo[-1].get_file()
     file_name = f"{photo_file.file_id}.jpg"
     file_path = await photo_file.download_to_drive(file_name)
@@ -558,11 +632,12 @@ async def crop_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data['crop_file_path'] = str(file_path)
     context.user_data['crop_dims'] = {'left': left, 'top': top, 'right': right, 'bottom': bottom}
 
-    await update.message.reply_photo(
+    message = await update.message.reply_photo(
         photo=open(file_path, 'rb'),
         caption="استخدم الأزرار لضبط القص.",
         reply_markup=get_crop_keyboard(left, top, right, bottom)
     )
+    add_message_to_delete_list(context, message.message_id)
     return INTERACTIVE_CROP
 
 async def interactive_crop_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -601,22 +676,26 @@ async def interactive_crop_handler(update: Update, context: ContextTypes.DEFAULT
                     f.write(response.content)
 
                 await context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
-                await context.bot.send_photo(chat_id=query.message.chat_id, photo=open(processed_image_path, 'rb'))
+                message = await context.bot.send_photo(chat_id=query.message.chat_id, photo=open(processed_image_path, 'rb'))
+                add_message_to_delete_list(context, message.message_id)
                 os.remove(processed_image_path)
             else:
-                await query.message.reply_text(f"حدث خطأ أثناء قص الصورة: {response.json().get('error')}")
+                message = await query.message.reply_text(f"حدث خطأ أثناء قص الصورة: {response.json().get('error')}")
+                add_message_to_delete_list(context, message.message_id)
         except requests.exceptions.RequestException as e:
             logger.error(f"Error connecting to server: {e}")
-            await query.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+            message = await query.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+            add_message_to_delete_list(context, message.message_id)
         finally:
             os.remove(file_path)
             del context.user_data['crop_file_path']
             del context.user_data['crop_dims']
 
-        await query.message.reply_text(
+        message = await query.message.reply_text(
             'اختر أداة أخرى:',
             reply_markup=get_category_keyboard(update.effective_user.id)
         )
+        add_message_to_delete_list(context, message.message_id)
         return CHOOSING_CATEGORY
 
     # Update the preview
@@ -647,15 +726,12 @@ async def tool_details_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     tool_key = query.data.split("_")[1]
 
     if tool_key == 'start':
-        await query.edit_message_text(
-            'أهلاً بك في بوت الأدوات! اختر فئة من القائمة:',
-            reply_markup=get_category_keyboard(update.effective_user.id)
-        )
-        return CHOOSING_CATEGORY
+        return await start(update, context)
 
     for category_data in TOOLS.values():
         if tool_key in category_data["tools"]:
-            await query.edit_message_text(category_data["tools"][tool_key]["desc"], reply_markup=get_tool_details_keyboard())
+            message = await query.edit_message_text(category_data["tools"][tool_key]["desc"], reply_markup=get_tool_details_keyboard())
+            add_message_to_delete_list(context, message.message_id)
             break
 
     return WAITING_FOR_TOOL_DETAILS
@@ -666,7 +742,8 @@ async def manage_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user_id = str(update.effective_user.id)
 
     if query.data == 'manage_favorites':
-        await query.edit_message_text("اختر الأدوات لإضافتها أو إزالتها من المفضلة:", reply_markup=get_favorites_management_keyboard(user_id))
+        message = await query.edit_message_text("اختر الأدوات لإضافتها أو إزالتها من المفضلة:", reply_markup=get_favorites_management_keyboard(user_id))
+        add_message_to_delete_list(context, message.message_id)
         return MANAGING_FAVORITES
 
     tool_key = query.data.split("_")[1]
@@ -682,21 +759,25 @@ async def manage_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     with open('user_favorites.json', 'w', encoding='utf-8') as f:
         json.dump(USER_FAVORITES, f, indent=4)
 
-    await query.edit_message_text("تم تحديث المفضلة.", reply_markup=get_favorites_management_keyboard(user_id))
+    message = await query.edit_message_text("تم تحديث المفضلة.", reply_markup=get_favorites_management_keyboard(user_id))
+    add_message_to_delete_list(context, message.message_id)
     return MANAGING_FAVORITES
 
 async def crop_dims_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    add_message_to_delete_list(context, update.message.message_id)
     dims_text = update.message.text
     try:
         left, top, right, bottom = [int(d.strip()) for d in dims_text.split(',')]
     except ValueError:
-        await update.message.reply_text("صيغة غير صالحة. الرجاء إرسال الأبعاد بالصيغة التالية: left,top,right,bottom")
+        message = await update.message.reply_text("صيغة غير صالحة. الرجاء إرسال الأبعاد بالصيغة التالية: left,top,right,bottom")
+        add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_CROP_DIMS
 
     file_path = context.user_data['crop_file_path']
     file_name = os.path.basename(file_path)
 
-    await update.message.reply_text("جاري قص الصورة...")
+    message = await update.message.reply_text("جاري قص الصورة...")
+    add_message_to_delete_list(context, message.message_id)
 
     try:
         with open(file_path, 'rb') as f:
@@ -708,21 +789,25 @@ async def crop_dims_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             with open(processed_image_path, 'wb') as f:
                 f.write(response.content)
 
-            await update.message.reply_photo(photo=open(processed_image_path, 'rb'))
+            message = await update.message.reply_photo(photo=open(processed_image_path, 'rb'))
+            add_message_to_delete_list(context, message.message_id)
             os.remove(processed_image_path)
         else:
-            await update.message.reply_text(f"حدث خطأ أثناء قص الصورة: {response.json().get('error')}")
+            message = await update.message.reply_text(f"حدث خطأ أثناء قص الصورة: {response.json().get('error')}")
+            add_message_to_delete_list(context, message.message_id)
     except requests.exceptions.RequestException as e:
         logger.error(f"Error connecting to server: {e}")
-        await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        message = await update.message.reply_text("لا يمكن الوصول إلى الخادم حاليًا.")
+        add_message_to_delete_list(context, message.message_id)
     finally:
         os.remove(file_path)
         del context.user_data['crop_file_path']
 
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         'اختر أداة أخرى:',
         reply_markup=get_category_keyboard(update.effective_user.id)
     )
+    add_message_to_delete_list(context, message.message_id)
     return CHOOSING_CATEGORY
 
 
