@@ -6,7 +6,7 @@ This server provides the backend functionality for the Telegram bot.
 It handles requests from the bot to process images, videos, and other files.
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import os
 from tools import image, video, file as file_tools, other
 import logging
@@ -37,7 +37,10 @@ def index():
     """Returns a simple greeting message."""
     return "Hello from Telegram Tools Bot Server!"
 
-# ... (rest of the routes are the same)
+@app.route('/game')
+def game():
+    """Serves the snake game."""
+    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'game'), 'index.html')
 
 
 if __name__ == '__main__':
