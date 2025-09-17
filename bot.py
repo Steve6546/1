@@ -334,6 +334,11 @@ async def select_tool(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         message = await query.edit_message_text(text="أرسل لي الصورة التي تريد قصها.")
         add_message_to_delete_list(context, message.message_id)
         return WAITING_FOR_IMAGE_CROP
+    elif tool == 'snake_game':
+        game_url = f"http://{SERVER_HOST}:{SERVER_PORT}/game"
+        message = await query.edit_message_text(text=f"اضغط على الرابط لبدء لعبة الدودة: {game_url}")
+        add_message_to_delete_list(context, message.message_id)
+        return CHOOSING_CATEGORY
     else:
         message = await query.edit_message_text(text=f"تم اختيار أداة: {tool}. هذه الميزة قيد التطوير.", reply_markup=get_tool_keyboard(context.user_data['selected_category']))
         add_message_to_delete_list(context, message.message_id)
