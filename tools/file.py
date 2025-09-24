@@ -10,7 +10,15 @@ import shutil
 import os
 
 def zip_file(app, files):
-    """Zips a list of files."""
+    """Zips a list of uploaded files into a single archive.
+
+    Args:
+        app: The Flask application instance.
+        files: A list of file objects to be zipped.
+
+    Returns:
+        A Flask response with the created zip archive or a JSON error message.
+    """
     if not files or files[0].filename == '':
         return jsonify({"error": "No selected files"}), 400
 
@@ -28,7 +36,18 @@ def zip_file(app, files):
     return send_from_directory(app.config['UPLOAD_FOLDER'], zip_filename)
 
 def unzip_file(app, file):
-    """Unzips a zip file."""
+    """Unzips a provided zip file and sends the contents back as a new zip.
+
+    This function extracts the contents of a zip file, then re-zips them
+    to ensure a clean and predictable archive structure.
+
+    Args:
+        app: The Flask application instance.
+        file: The zip file to be unzipped.
+
+    Returns:
+        A Flask response with the re-zipped archive or a JSON error message.
+    """
     if file.filename == '' or not file.filename.endswith('.zip'):
         return jsonify({"error": "Please upload a zip file"}), 400
 

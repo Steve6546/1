@@ -11,7 +11,15 @@ import os
 import subprocess
 
 def remove_bg(app, file):
-    """Removes the background from an image."""
+    """Removes the background from an image using the rembg library.
+
+    Args:
+        app: The Flask application instance.
+        file: The image file to process.
+
+    Returns:
+        A Flask response with the processed image or a JSON error message.
+    """
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
     if file:
@@ -31,7 +39,18 @@ def remove_bg(app, file):
         return send_from_directory(app.config['UPLOAD_FOLDER'], output_filename)
 
 def upscale_4k(app, file):
-    """Upscales an image to 4K using Real-ESRGAN."""
+    """Upscales an image to 4K using the Real-ESRGAN model.
+
+    This function requires the 'realesrgan-ncnn-vulkan' command-line tool
+    to be installed and available in the system's PATH.
+
+    Args:
+        app: The Flask application instance.
+        file: The image file to upscale.
+
+    Returns:
+        A Flask response with the upscaled image or a JSON error message.
+    """
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
     if file:
@@ -49,7 +68,22 @@ def upscale_4k(app, file):
             return jsonify({"error": "Real-ESRGAN not found or failed to process image."}), 500
 
 def preview_crop(app, filepath, left, top, right, bottom):
-    """Generates a preview of the cropped image."""
+    """Generates a preview of a cropped image with a red border.
+
+    This is used to show the user the result of the interactive crop
+    before they confirm the final crop.
+
+    Args:
+        app: The Flask application instance.
+        filepath (str): The path to the image to be previewed.
+        left (int): The x-coordinate of the top-left corner.
+        top (int): The y-coordinate of the top-left corner.
+        right (int): The x-coordinate of the bottom-right corner.
+        bottom (int): The y-coordinate of the bottom-right corner.
+
+    Returns:
+        A Flask response with the preview image.
+    """
     img = Image.open(filepath)
     # Add a red border to the preview
     preview_img = Image.new('RGB', img.size, (255, 0, 0))
@@ -64,7 +98,19 @@ def preview_crop(app, filepath, left, top, right, bottom):
     return send_from_directory(app.config['UPLOAD_FOLDER'], preview_filename)
 
 def crop_image(app, file, left, top, right, bottom):
-    """Crops an image with the given dimensions."""
+    """Crops an image to the specified dimensions.
+
+    Args:
+        app: The Flask application instance.
+        file: The image file to crop.
+        left (int): The x-coordinate of the top-left corner.
+        top (int): The y-coordinate of the top-left corner.
+        right (int): The x-coordinate of the bottom-right corner.
+        bottom (int): The y-coordinate of the bottom-right corner.
+
+    Returns:
+        A Flask response with the cropped image or a JSON error message.
+    """
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
     if file:

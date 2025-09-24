@@ -9,7 +9,15 @@ import ffmpeg
 import os
 
 def download_video(app, video_url):
-    """Downloads a video from a given URL."""
+    """Downloads a video from a given URL using yt-dlp.
+
+    Args:
+        app: The Flask application instance.
+        video_url (str): The URL of the video to download.
+
+    Returns:
+        A Flask response with the downloaded video file or a JSON error message.
+    """
     if not video_url:
         return jsonify({"error": "No URL provided"}), 400
 
@@ -26,7 +34,15 @@ def download_video(app, video_url):
         return jsonify({"error": str(e)}), 500
 
 def to_mp3(app, file):
-    """Converts a video file to MP3."""
+    """Converts a video file to an MP3 audio file using ffmpeg.
+
+    Args:
+        app: The Flask application instance.
+        file: The video file to convert.
+
+    Returns:
+        A Flask response with the converted MP3 file or a JSON error message.
+    """
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
     if file:

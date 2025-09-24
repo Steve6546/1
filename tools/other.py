@@ -8,7 +8,15 @@ import qrcode
 import os
 
 def generate_qr(app, text):
-    """Generates a QR code from text."""
+    """Generates a QR code image from the provided text.
+
+    Args:
+        app: The Flask application instance.
+        text (str): The text or URL to encode in the QR code.
+
+    Returns:
+        A Flask response with the generated QR code image or a JSON error message.
+    """
     if not text:
         return jsonify({"error": "No text provided"}), 400
 

@@ -59,9 +59,16 @@ user_timestamps = {}
 SPAM_LIMIT = 3  # seconds
 
 def is_spam(user_id: int) -> bool:
-    """
-    Checks if a user is spamming the bot.
-    Returns True if the user is spamming, False otherwise.
+    """Checks if a user is making requests too frequently.
+
+    A simple spam filter that limits users to one request every `SPAM_LIMIT`
+    seconds.
+
+    Args:
+        user_id: The integer ID of the user.
+
+    Returns:
+        True if the user is considered spamming, False otherwise.
     """
     current_time = time.time()
     if user_id in user_timestamps and current_time - user_timestamps.get(user_id, 0) < SPAM_LIMIT:
@@ -70,7 +77,15 @@ def is_spam(user_id: int) -> bool:
     return False
 
 def log_tool_usage(user_id: int, tool_key: str) -> None:
-    """Logs the usage of a tool by a user."""
+    """Records the usage of a specific tool by a user.
+
+    Logs the tool key and a timestamp for the given user ID in the
+    `user_logs.json` file.
+
+    Args:
+        user_id: The integer ID of the user.
+        tool_key: The string identifier for the tool being used.
+    """
     user_id_str = str(user_id)
     if user_id_str not in USER_LOGS:
         USER_LOGS[user_id_str] = []
@@ -85,7 +100,15 @@ def log_tool_usage(user_id: int, tool_key: str) -> None:
         json.dump(USER_LOGS, f, indent=4)
 
 def add_message_to_delete_list(context: ContextTypes.DEFAULT_TYPE, message_id: int):
-    """Adds a message ID to the list of messages to be deleted."""
+    """Adds a message ID to a list for future deletion.
+
+    This allows the bot to clean up its own messages later to keep the
+    chat tidy, for example, by using the '/clear_chat' command.
+
+    Args:
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+        message_id: The integer ID of the message to be deleted.
+    """
     if 'messages_to_delete' not in context.user_data:
         context.user_data['messages_to_delete'] = []
     context.user_data['messages_to_delete'].append(message_id)
@@ -94,7 +117,17 @@ def add_message_to_delete_list(context: ContextTypes.DEFAULT_TYPE, message_id: i
 # --- Keyboard Generators ---
 
 def get_category_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Generates the main menu keyboard with tool categories."""
+    """Generates the main menu keyboard.
+
+    This keyboard displays tool categories, a link to the user's favorites,
+    and other bot management options.
+
+    Args:
+        user_id: The integer ID of the user, used to check for favorites.
+
+    Returns:
+        An `InlineKeyboardMarkup` object representing the main menu.
+    """
     keyboard = []
     user_id_str = str(user_id)
     if user_id_str in USER_FAVORITES and USER_FAVORITES[user_id_str]:
@@ -111,7 +144,14 @@ def get_category_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
 
 def get_favorites_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Generates the keyboard for the user's favorite tools."""
+    """Generates a keyboard with the user's favorite tools.
+
+    Args:
+        user_id: The integer ID of the user whose favorites to display.
+
+    Returns:
+        An `InlineKeyboardMarkup` object with buttons for each favorite tool.
+    """
     keyboard = []
     user_id_str = str(user_id)
     if user_id_str in USER_FAVORITES:
@@ -125,7 +165,17 @@ def get_favorites_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
 
 def get_favorites_management_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Generates the keyboard for managing favorite tools."""
+    """Generates a keyboard for adding or removing favorite tools.
+
+    Each button shows a tool's name and a star icon (filled or empty)
+    to indicate its favorite status.
+
+    Args:
+        user_id: The integer ID of the user to check favorite status against.
+
+    Returns:
+        An `InlineKeyboardMarkup` for managing favorites.
+    """
     keyboard = []
     user_id_str = str(user_id)
     for category_key, category_data in TOOLS.items():
@@ -137,7 +187,14 @@ def get_favorites_management_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 def get_tool_details_keyboard() -> InlineKeyboardMarkup:
-    """Generates the keyboard for viewing tool details."""
+    """Generates a keyboard listing all available tools.
+
+    This is used to allow the user to select a tool to view its
+    detailed description.
+
+    Returns:
+        An `InlineKeyboardMarkup` listing all tools.
+    """
     keyboard = []
     for category_key, category_data in TOOLS.items():
         for tool_key, tool_info in category_data["tools"].items():
@@ -145,7 +202,15 @@ def get_tool_details_keyboard() -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data='start')])
     return InlineKeyboardMarkup(keyboard)
 
-def get_tool_keyboard(category_key):
+def get_tool_keyboard(category_key: str) -> InlineKeyboardMarkup:
+    """Generates a keyboard for the tools within a specific category.
+
+    Args:
+        category_key: The string key for the selected category.
+
+    Returns:
+        An `InlineKeyboardMarkup` with buttons for each tool in the category.
+    """
     tools = TOOLS[category_key]["tools"]
     keyboard = []
     for tool_key, tool_data in tools.items():
@@ -153,8 +218,18 @@ def get_tool_keyboard(category_key):
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data='start')])
     return InlineKeyboardMarkup(keyboard)
 
-def get_crop_keyboard(left, top, right, bottom):
-    """Generates the keyboard for interactive cropping."""
+def get_crop_keyboard(left: float, top: float, right: float, bottom: float) -> InlineKeyboardMarkup:
+    """Generates the control keyboard for the interactive image cropper.
+
+    Args:
+        left: The current left coordinate of the crop area.
+        top: The current top coordinate of the crop area.
+        right: The current right coordinate of the crop area.
+        bottom: The current bottom coordinate of the crop area.
+
+    Returns:
+        An `InlineKeyboardMarkup` with controls for cropping.
+    """
     step = 10
     keyboard = [
         [InlineKeyboardButton("⬆️", callback_data=f"crop_up_{step}")],
@@ -176,9 +251,18 @@ def get_crop_keyboard(left, top, right, bottom):
 # --- Command and Callback Handlers ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """
-    Starts the conversation and displays the main menu.
-    Can be triggered by /start command or a callback query.
+    """Handles the /start command and the initial conversation entry point.
+
+    Displays the main category keyboard to the user. This function can be
+    triggered either by a user sending the /start command or by a callback
+    query with the data 'start' (e.g., from a 'Back' button).
+
+    Args:
+        update: The `Update` object from `python-telegram-bot`.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, which is `CHOOSING_CATEGORY`.
     """
     user_id = update.effective_user.id
     if is_spam(user_id):
@@ -202,7 +286,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handles category selection from the main menu."""
+    """Handles user interaction with the main category menu.
+
+    This function processes callback queries from the main menu, directing
+    the user to the appropriate tool category, feature (like 'favorites' or
+    'about'), or action (like 'clear_chat').
+
+    Args:
+        update: The `Update` object from `python-telegram-bot`.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, depending on the
+        user's selection.
+    """
     user_id = update.effective_user.id
     if is_spam(user_id):
         return CHOOSING_CATEGORY
@@ -287,7 +384,19 @@ async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def select_tool(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handles tool selection and prompts the user for input."""
+    """Handles the user's selection of a specific tool.
+
+    Based on the tool selected, it prompts the user for the necessary input
+    (e.g., an image, a URL, text) and transitions the `ConversationHandler`
+    to the appropriate state to wait for that input.
+
+    Args:
+        update: The `Update` object from `python-telegram-bot`.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler` to wait for user input.
+    """
     user_id = update.effective_user.id
     if is_spam(user_id):
         return CHOOSING_TOOL
@@ -340,6 +449,19 @@ async def select_tool(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         return CHOOSING_TOOL
 
 async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving a photo for the 'remove_bg' tool.
+
+    This function is triggered when the bot is in the `WAITING_FOR_IMAGE`
+    state. It takes the received photo, sends it to the backend server
+    for background removal, and replies with the processed image.
+
+    Args:
+        update: The `Update` object containing the message with the photo.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, `CHOOSING_CATEGORY`.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_IMAGE
     add_message_to_delete_list(context, update.message.message_id)
     photo_file = await update.message.photo[-1].get_file()
@@ -380,6 +502,19 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving a URL for the 'download_video' tool.
+
+    This function is triggered when the bot is in the `WAITING_FOR_URL`
+    state. It takes the received URL, sends it to the backend server
+    for video download, and replies with the downloaded video file.
+
+    Args:
+        update: The `Update` object containing the message with the URL.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, `CHOOSING_CATEGORY`.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_URL
     add_message_to_delete_list(context, update.message.message_id)
     video_url = update.message.text
@@ -413,6 +548,19 @@ async def url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return CHOOSING_CATEGORY
 
 async def video_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving a video file for the 'to_mp3' tool.
+
+    This function is triggered when the bot is in the `WAITING_FOR_VIDEO_FILE`
+    state. It takes the received video, sends it to the backend server
+    for MP3 conversion, and replies with the resulting audio file.
+
+    Args:
+        update: The `Update` object containing the message with the video.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, `CHOOSING_CATEGORY`.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_VIDEO_FILE
     add_message_to_delete_list(context, update.message.message_id)
     video_file = await update.message.video.get_file()
@@ -452,6 +600,19 @@ async def video_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return CHOOSING_CATEGORY
 
 async def qr_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving text for the 'generate_qr' tool.
+
+    This function is triggered when the bot is in the `WAITING_FOR_QR_TEXT`
+    state. It takes the received text, sends it to the backend server
+    to generate a QR code, and replies with the resulting image.
+
+    Args:
+        update: The `Update` object containing the message with the text.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, `CHOOSING_CATEGORY`.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_QR_TEXT
     add_message_to_delete_list(context, update.message.message_id)
     text = update.message.text
@@ -485,6 +646,22 @@ async def qr_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return CHOOSING_CATEGORY
 
 async def zip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving files for the 'zip_file' tool.
+
+    This function is triggered when the bot is in the `WAITING_FOR_FILES_TO_ZIP`
+    state. It collects multiple document files from the user. When the user
+    sends the text 'تم' (Done), it sends all collected files to the backend
+    server for zipping and replies with the resulting archive.
+
+    Args:
+        update: The `Update` object containing the document or text message.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, which is either
+        `WAITING_FOR_FILES_TO_ZIP` to collect more files, or `CHOOSING_CATEGORY`
+        after the zip is created.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_FILES_TO_ZIP
     add_message_to_delete_list(context, update.message.message_id)
     if update.message.text and update.message.text.lower() == 'تم':
@@ -537,6 +714,19 @@ async def zip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def unzip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving a zip file for the 'unzip_file' tool.
+
+    This function is triggered when the bot is in the `WAITING_FOR_ZIP_TO_UNZIP`
+    state. It takes the received zip file, sends it to the backend server
+    for unzipping, and replies with a new zip file containing the contents.
+
+    Args:
+        update: The `Update` object containing the message with the zip file.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, `CHOOSING_CATEGORY`.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_ZIP_TO_UNZIP
     add_message_to_delete_list(context, update.message.message_id)
     document = await update.message.document.get_file()
@@ -576,6 +766,20 @@ async def unzip_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return CHOOSING_CATEGORY
 
 async def upscale_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving an image for the 'upscale_4k' tool.
+
+    This function is triggered when the bot is in the
+    `WAITING_FOR_IMAGE_UPSCALE` state. It takes the received photo, sends
+    it to the backend server for upscaling, and replies with the processed
+    image.
+
+    Args:
+        update: The `Update` object containing the message with the photo.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, `CHOOSING_CATEGORY`.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_IMAGE_UPSCALE
     add_message_to_delete_list(context, update.message.message_id)
     photo_file = await update.message.photo[-1].get_file()
@@ -615,6 +819,19 @@ async def upscale_image_handler(update: Update, context: ContextTypes.DEFAULT_TY
     return CHOOSING_CATEGORY
 
 async def crop_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the initial receipt of an image for the 'crop_image' tool.
+
+    This function is triggered when the bot is in the `WAITING_FOR_IMAGE_CROP`
+    state. It saves the image, calculates initial crop dimensions, and
+    displays the image with the interactive cropping keyboard.
+
+    Args:
+        update: The `Update` object containing the message with the photo.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The next state for the `ConversationHandler`, `INTERACTIVE_CROP`.
+    """
     add_message_to_delete_list(context, update.message.message_id)
     photo_file = await update.message.photo[-1].get_file()
     file_name = f"{photo_file.file_id}.jpg"
@@ -641,6 +858,21 @@ async def crop_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return INTERACTIVE_CROP
 
 async def interactive_crop_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles callback queries from the interactive cropping keyboard.
+
+    This function adjusts the crop dimensions based on the user's button
+    presses (move, zoom). It sends a request to the backend to get a
+    preview of the crop and updates the message. If the user clicks 'done',
+    it finalizes the crop and sends the result.
+
+    Args:
+        update: The `Update` object containing the callback query.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        `INTERACTIVE_CROP` to continue cropping, or `CHOOSING_CATEGORY`
+        when the crop is complete.
+    """
     query = update.callback_query
     await query.answer()
 
@@ -720,6 +952,20 @@ async def interactive_crop_handler(update: Update, context: ContextTypes.DEFAULT
 
 
 async def tool_details_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the selection of a tool to view its details.
+
+    Triggered when the bot is in the `WAITING_FOR_TOOL_DETAILS` state.
+    It displays the description of the tool selected by the user from the
+    details keyboard.
+
+    Args:
+        update: The `Update` object containing the callback query.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The same state, `WAITING_FOR_TOOL_DETAILS`, to allow viewing
+        details of other tools.
+    """
     if is_spam(update.effective_user.id): return WAITING_FOR_TOOL_DETAILS
     query = update.callback_query
     await query.answer()
@@ -737,6 +983,20 @@ async def tool_details_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     return WAITING_FOR_TOOL_DETAILS
 
 async def manage_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles adding or removing a tool from the user's favorites.
+
+    Triggered when the bot is in the `MANAGING_FAVORITES` state. It toggles
+    the favorite status of the selected tool and updates the
+    `user_favorites.json` file.
+
+    Args:
+        update: The `Update` object containing the callback query.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        The same state, `MANAGING_FAVORITES`, to allow managing other
+        favorites.
+    """
     query = update.callback_query
     await query.answer()
     user_id = str(update.effective_user.id)
@@ -764,6 +1024,19 @@ async def manage_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return MANAGING_FAVORITES
 
 async def crop_dims_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles receiving crop dimensions as text input.
+
+    This provides an alternative to the interactive cropper, allowing the
+    user to specify exact pixel values for the crop.
+
+    Args:
+        update: The `Update` object containing the message with the dimensions.
+        context: The `ContextTypes.DEFAULT_TYPE` object from the handler.
+
+    Returns:
+        `WAITING_FOR_CROP_DIMS` if the input is invalid, or
+        `CHOOSING_CATEGORY` after the crop is complete.
+    """
     add_message_to_delete_list(context, update.message.message_id)
     dims_text = update.message.text
     try:
@@ -812,7 +1085,12 @@ async def crop_dims_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 def main() -> None:
-    """Initializes and runs the bot."""
+    """Initializes and runs the Telegram bot.
+
+    This function sets up the `Application`, creates the `ConversationHandler`
+    with all the defined states and handlers, adds it to the application,
+    and starts the bot's polling loop.
+    """
     print("Initializing application...")
     application = Application.builder().token(BOT_TOKEN).build()
     print("Application initialized.")
